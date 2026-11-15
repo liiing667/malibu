@@ -28,10 +28,13 @@ export class Tokens {
     return typeSafeUID(this.secretLength)
   }
 
-  verify(secret: string, token: string | string[]): boolean {
-    if (Array.isArray(token)) token = token.join('')
-    const index = token?.indexOf('-')
-    if (index === -1 || index === undefined) {
+  verify(secret: string, token: unknown): boolean {
+    if (typeof token !== 'string') {
+      return false
+    }
+
+    const index = token.indexOf('-')
+    if (index <= 0 || index === token.length - 1) {
       return false
     }
 

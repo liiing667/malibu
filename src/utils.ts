@@ -11,20 +11,37 @@ export function typeSafeUID(length: number): string {
 }
 
 /**
- * Generate a (not secure) quick salt with specified length.
- * Rewrite of https://github.com/crypto-utils/rndm
+ * Generate a cryptographically secure base62 salt with specified length.
  * @param {Number} length Salt length
  * @returns {String} Salt
  */
 export function randomBase62(length: number): string {
   const availableCharacters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-  const byteLength = Buffer.byteLength(availableCharacters)
+  const alphabetLength = availableCharacters.length
+  const maxUniformValue = 256 - (256 % alphabetLength)
   let salt = ''
-  for (let i = 0; i < length; i++) {
-    salt += availableCharacters[Math.floor(byteLength * Math.random())]
+
+  while (salt.length < length) {
+    const byte = randomBytes(1)[0]
+    if (byte >= maxUniformValue) continue
+    salt += availableCharacters[byte % alphabetLength]
   }
 
   return salt
+}
+
+/**
+ * Ensure a token candidate is a single, well-formed string.
+ * Arrays, repeated fields and non-string values are rejected.
+ * @param {unknown} value Raw token candidate coming from a single source
+ * @returns {String | undefined} The token when valid, otherwise undefined
+ */
+export function asSingleToken(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+
+  return value
 }
 
 /**

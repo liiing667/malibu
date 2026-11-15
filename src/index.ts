@@ -3,6 +3,7 @@ import type { ParsedUrlQuery } from 'node:querystring'
 import { type SerializeOptions, serialize } from '@tinyhttp/cookie'
 import { sign } from '@tinyhttp/cookie-signature'
 import { Tokens } from './token'
+import { asSingleToken } from './utils'
 
 export interface CSRFRequest extends IncomingMessage {
   csrfToken(): string
@@ -26,7 +27,7 @@ export interface CSRFOptions {
   middleware?: MiddlewareOptions
   cookie?: CookieOptions
   sessionKey?: string
-  value?: (req: CSRFRequest | IncomingMessage) => string | string[]
+  value?: (req: CSRFRequest | IncomingMessage) => string | undefined
   ignoreMethod?: HTTPMethod[]
   saltLength?: number
   secretLength?: number
@@ -51,6 +52,8 @@ const defaultOptions: CSRFOptions = {
   secretLength: 18,
   value: defaultValue
 }
+
+const CSRF_HEADER_NAMES = ['csrf-token', 'xsrf-token', 'x-csrf-token', 'x-xsrf-token'] as const
 
 /**
  * Initiate CSRF (Cross-Site Request Forgery) Protection middleware.
@@ -109,15 +112,40 @@ export function csrf(opts: CSRFOptions = {}): (req: CSRFRequest, res: ServerResp
   }
 }
 
-function defaultValue(req: CSRFRequest): string | string[] {
-  return (
-    (req?.body?._csrf as string) ||
-    req.query?._csrf ||
-    req.headers['csrf-token'] ||
-    req.headers['xsrf-token'] ||
-    req.headers['x-csrf-token'] ||
-    req.headers['x-xsrf-token']
-  )
+/**
+ * Resolve the CSRF token from exactly one explicit source.
+ * The token must be a single string; multi-value fields (arrays), repeated
+ * fields across sources/header aliases and malformed values are rejected so
+ * proxy or framework parsing differences cannot redirect verification to
+ * another value.
+ */
+function defaultValue(req: CSRFRequest): string | undefined {
+  const candidates: string[] = []
+
+  const bodyToken = req.body?._csrf
+  if (bodyToken !== undefined) {
+    const token = asSingleToken(bodyToken)
+    if (token === undefined) return undefined
+    candidates.push(token)
+  }
+
+  const queryToken = req.query?._csrf
+  if (queryToken !== undefined) {
+    const token = asSingleToken(queryToken)
+    if (token === undefined) return undefined
+    candidates.push(token)
+  }
+
+  for (const headerName of CSRF_HEADER_NAMES) {
+    const headerToken = req.headers[headerName]
+    if (headerToken === undefined) continue
+
+    const token = asSingleToken(headerToken)
+    if (token === undefined) return undefined
+    candidates.push(token)
+  }
+
+  return candidates.length === 1 ? candidates[0] : undefined
 }
 
 function verifyConfiguration(
